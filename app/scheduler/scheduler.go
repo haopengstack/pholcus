@@ -1,29 +1,23 @@
 package scheduler
 
 import (
-	"runtime"
 	"sync"
+	"time"
 
 	"github.com/henrylee2cn/pholcus/app/aid/proxy"
-	"github.com/henrylee2cn/pholcus/app/downloader/request"
 	"github.com/henrylee2cn/pholcus/logs"
 	"github.com/henrylee2cn/pholcus/runtime/cache"
 	"github.com/henrylee2cn/pholcus/runtime/status"
 )
 
+// 调度器
 type scheduler struct {
-	// Spider实例的请求矩阵列表
-	matrices []*Matrix
-	// 总并发量计数
-	count chan bool
-	// 运行状态
-	status int
-	// 全局代理IP
-	proxy *proxy.Proxy
-	// 标记是否使用代理IP
-	useProxy bool
-	// 全局读写锁
-	sync.RWMutex
+	status       int          // 运行状态
+	count        chan bool    // 总并发量计数
+	useProxy     bool         // 标记是否使用代理IP
+	proxy        *proxy.Proxy // 全局代理IP
+	matrices     []*Matrix    // Spider实例的请求矩阵列表
+	sync.RWMutex              // 全局读写锁
 }
 
 // 定义全局调度
@@ -35,7 +29,7 @@ var sdl = &scheduler{
 
 func Init() {
 	for sdl.proxy == nil {
-		runtime.Gosched()
+		time.Sleep(100 * time.Millisecond)
 	}
 	sdl.matrices = []*Matrix{}
 	sdl.count = make(chan bool, cache.Task.ThreadNum)
@@ -80,23 +74,20 @@ func PauseRecover() {
 
 // 终止任务
 func Stop() {
+	// println("scheduler^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
 	sdl.Lock()
+	defer sdl.Unlock()
 	sdl.status = status.STOP
 	// 清空
-	go func() {
-		defer func() {
-			recover()
-		}()
-		for _, matrix := range sdl.matrices {
-			matrix.Lock()
-			matrix.reqs = make(map[int][]*request.Request)
-			matrix.priorities = []int{}
-			matrix.Unlock()
-		}
-		close(sdl.count)
-		sdl.matrices = []*Matrix{}
+	defer func() {
+		recover()
 	}()
-	sdl.Unlock()
+	// for _, matrix := range sdl.matrices {
+	// 	matrix.windup()
+	// }
+	close(sdl.count)
+	sdl.matrices = []*Matrix{}
+	// println("scheduler$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
 }
 
 // 每个spider实例分配到的平均资源量
@@ -110,7 +101,7 @@ func (self *scheduler) avgRes() int32 {
 
 func (self *scheduler) checkStatus(s int) bool {
 	self.RLock()
-	defer self.RUnlock()
 	b := self.status == s
+	self.RUnlock()
 	return b
 }

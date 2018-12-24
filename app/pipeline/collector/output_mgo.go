@@ -15,10 +15,13 @@ import (
 /************************ MongoDB 输出 ***************************/
 
 func init() {
-	Output["mgo"] = func(self *Collector, dataIndex int) error {
+	DataOutput["mgo"] = func(self *Collector) error {
 		//连接数据库
 		if mgo.Error() != nil {
-			return fmt.Errorf("MongoBD数据库链接失败: %v", mgo.Error())
+			mgo.Refresh()
+			if mgo.Error() != nil { // try again
+				return fmt.Errorf("MongoBD数据库链接失败: %v", mgo.Error())
+			}
 		}
 		return mgo.Call(func(src pool.Src) error {
 			var (
@@ -29,12 +32,10 @@ func init() {
 				err         error
 			)
 
-			for _, datacell := range self.DockerQueue.Dockers[dataIndex] {
+			for _, datacell := range self.dataDocker {
 				subNamespace := util.FileNameReplace(self.subNamespace(datacell))
-				var cName = namespace
-				if subNamespace != "" {
-					cName += "__" + subNamespace
-				}
+				cName := joinNamespaces(namespace, subNamespace)
+
 				if _, ok := collections[subNamespace]; !ok {
 					collections[subNamespace] = db.C(cName)
 				}

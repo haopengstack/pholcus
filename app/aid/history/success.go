@@ -14,8 +14,8 @@ import (
 type Success struct {
 	tabName     string
 	fileName    string
-	new         map[string]bool // [hash(url+method)]true
-	old         map[string]bool // [hash(url+method)]true
+	new         map[string]bool // [Request.Unique()]true
+	old         map[string]bool // [Request.Unique()]true
 	inheritable bool
 	sync.RWMutex
 }
@@ -23,31 +23,31 @@ type Success struct {
 // 更新或加入成功记录，
 // 对比是否已存在，不存在就记录，
 // 返回值表示是否有插入操作。
-func (self *Success) UpsertSuccess(hash string) bool {
+func (self *Success) UpsertSuccess(reqUnique string) bool {
 	self.RWMutex.Lock()
 	defer self.RWMutex.Unlock()
 
-	if self.old[hash] {
+	if self.old[reqUnique] {
 		return false
 	}
-	if self.new[hash] {
+	if self.new[reqUnique] {
 		return false
 	}
-	self.new[hash] = true
+	self.new[reqUnique] = true
 	return true
 }
 
-func (self *Success) HasSuccess(hash string) bool {
+func (self *Success) HasSuccess(reqUnique string) bool {
 	self.RWMutex.Lock()
-	has := self.old[hash] || self.new[hash]
+	has := self.old[reqUnique] || self.new[reqUnique]
 	self.RWMutex.Unlock()
 	return has
 }
 
 // 删除成功记录
-func (self *Success) DeleteSuccess(hash string) {
+func (self *Success) DeleteSuccess(reqUnique string) {
 	self.RWMutex.Lock()
-	delete(self.new, hash)
+	delete(self.new, reqUnique)
 	self.RWMutex.Unlock()
 }
 
@@ -90,7 +90,7 @@ func (self *Success) flush(provider string) (sLen int, err error) {
 		table, ok := getWriteMysqlTable(self.tabName)
 		if !ok {
 			table = mysql.New()
-			table.SetTableName("`" + self.tabName + "`").CustomPrimaryKey(`id VARCHAR(255) not null primary key`)
+			table.SetTableName(self.tabName).CustomPrimaryKey(`id VARCHAR(255) NOT NULL PRIMARY KEY`)
 			err = table.Create()
 			if err != nil {
 				return sLen, fmt.Errorf(" *     Fail  [添加成功记录][mysql]: %v 条 [ERROR]  %v\n", sLen, err)
@@ -107,7 +107,7 @@ func (self *Success) flush(provider string) (sLen int, err error) {
 		}
 
 	default:
-		f, _ := os.OpenFile(self.fileName, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0660)
+		f, _ := os.OpenFile(self.fileName, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0777)
 
 		b, _ := json.Marshal(self.new)
 		b[0] = ','
